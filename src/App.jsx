@@ -1,11 +1,17 @@
+// Componentes importados
 import { useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { v4 as uuidv4 } from "uuid";
+import FormPiece from "./components/FormPiece";
+import FormSheet from "./components/FormSheet";
+import CutPreview from "./components/CutPreview";
+import { motion } from "framer-motion";
 
+// Gerador de cores
 const generateColor = (index) => {
   const colors = [
     "#93c5fd", "#fca5a5", "#6ee7b7", "#fcd34d",
@@ -26,13 +32,13 @@ export default function CortePlanner() {
 
   const addPiece = () => {
     if (!newPiece.largura || !newPiece.altura || !newPiece.quantidade) return;
-    setPieces([...pieces, newPiece]);
+    setPieces([...pieces, { ...newPiece, id: uuidv4() }]);
     setNewPiece({ largura: "", altura: "", quantidade: "" });
   };
 
   const addSheet = () => {
     if (!newSheet.largura || !newSheet.altura || !newSheet.espessura) return;
-    setSheets([...sheets, newSheet]);
+    setSheets([...sheets, { ...newSheet, id: uuidv4() }]);
     setNewSheet({ largura: "", altura: "", espessura: "" });
   };
 
@@ -63,13 +69,15 @@ export default function CortePlanner() {
 
         for (let i = 0; i < remainingPieces.length;) {
           const p = remainingPieces[i];
-          if (
-            x + p.largura <= sheetWidth &&
-            y + p.altura <= sheetHeight
-          ) {
-            used.push({ ...p, x, y, sheetIndex });
-            x += p.largura + kerfValue;
-            rowHeight = Math.max(rowHeight, p.altura);
+          let fitsNormal = x + p.largura <= sheetWidth && y + p.altura <= sheetHeight;
+          let fitsRotated = x + p.altura <= sheetWidth && y + p.largura <= sheetHeight;
+
+          if (fitsNormal || fitsRotated) {
+            const largura = fitsNormal ? p.largura : p.altura;
+            const altura = fitsNormal ? p.altura : p.largura;
+            used.push({ ...p, x, y, largura, altura, sheetIndex });
+            x += largura + kerfValue;
+            rowHeight = Math.max(rowHeight, altura);
             remainingPieces.splice(i, 1);
           } else {
             i++;
@@ -115,67 +123,36 @@ export default function CortePlanner() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-6">
-      <h1 className="text-2xl font-bold">Plano de Corte - Protótipo</h1>
+    <motion.div
+      className="max-w-5xl mx-auto p-4 space-y-8 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <h1 className="text-3xl font-extrabold text-blue-600 dark:text-blue-400 text-center">Plano de Corte - Otimizado</h1>
 
-      {/* Resultado da Otimização */}
+      <Card className="p-4">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <FormPiece newPiece={newPiece} setNewPiece={setNewPiece} addPiece={addPiece} />
+          <FormSheet newSheet={newSheet} setNewSheet={setNewSheet} addSheet={addSheet} />
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-center">
+        <Button className="bg-blue-600 hover:bg-blue-700 text-white text-lg px-6 py-2 rounded-xl" onClick={generateOptimizedCut}>
+          Gerar Plano de Corte
+        </Button>
+      </div>
+
       {optimizedCuts.length > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <h2 className="text-lg font-semibold mb-2">Visualização Gráfica do Corte</h2>
-
-            <div ref={pdfRef} className="space-y-6">
-              {optimizedCuts.map((cut, index) => (
-                <div key={index}>
-                  <h3 className="font-semibold mb-2">Chapa #{cut.sheet}</h3>
-                  <div
-                    className="relative border border-gray-300 bg-white"
-                    style={{
-                      width: "100%",
-                      aspectRatio: `${cut.width} / ${cut.height}`,
-                      maxHeight: "400px",
-                      overflow: "hidden"
-                    }}
-                  >
-                    {cut.used.map((p, idx) => (
-                      <div
-                        key={idx}
-                        className="absolute border text-xs text-center overflow-hidden"
-                        style={{
-                          left: `${(p.x / cut.width) * 100}%`,
-                          top: `${(p.y / cut.height) * 100}%`,
-                          width: `${(p.largura / cut.width) * 100}%`,
-                          height: `${(p.altura / cut.height) * 100}%`,
-                          backgroundColor: generateColor(p.typeIndex),
-                          borderColor: "#333",
-                          color: "#000",
-                        }}
-                      >
-                        {p.largura} x {p.altura}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              <div className="flex flex-wrap gap-2 mt-4">
-                {pieces.map((p, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-sm">
-                    <div
-                      className="w-4 h-4 rounded"
-                      style={{ backgroundColor: generateColor(idx) }}
-                    ></div>
-                    {p.largura} x {p.altura} ({p.quantidade}x)
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Button className="mt-4" onClick={exportPDF}>
-              Exportar PDF
-            </Button>
-          </CardContent>
-        </Card>
+        <CutPreview
+          optimizedCuts={optimizedCuts}
+          pieces={pieces}
+          generateColor={generateColor}
+          pdfRef={pdfRef}
+          exportPDF={exportPDF}
+        />
       )}
-    </div>
+    </motion.div>
   );
 }
